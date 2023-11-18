@@ -9,16 +9,14 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"io"
 	"log"
+	"mime"
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
 )
-
-var windowsFriendlyRegex, _ = regexp.Compile("\\\\|/|:|\\*|\\?|<|>")
 
 type FakeWriterAt struct {
 	w io.Writer
@@ -67,6 +65,7 @@ func handleFile(client *s3.Client, bucket string, key string, size int64) error 
 	log.Printf("filePath=%s", filePath)
 	log.Printf("dir=%s", dir)
 	log.Printf("parent=%s", parent)
+	log.Printf("size=%.2f mb", float64(size)/1024.0/1024.0)
 	// if filePath doesn't exist
 	// download to location
 	if fi, fileErr := os.Stat(filePath); fileErr == nil {
@@ -151,9 +150,15 @@ func writeMeta(dir string, object *s3.GetObjectOutput) {
 	} else if errors.Is(fileErr, os.ErrNotExist) {
 		log.Printf("writing meta")
 		metaString := ""
+		dec := new(mime.WordDecoder)
 		for k, v := range object.Metadata {
 			kt := strings.TrimSpace(k)
-			vt := strings.TrimSpace(v)
+			vt, err := dec.DecodeHeader(v)
+			if err != nil {
+				log.Printf("Unable to decode header (%v)", err)
+				vt = v
+			}
+			vt = strings.TrimSpace(vt)
 			metaString += fmt.Sprintln(fmt.Sprintf("%s: %s", kt, vt))
 		}
 		log.Printf("metaString: %s", metaString)
@@ -180,6 +185,7 @@ func toAscii(s string) string {
 
 func walkBucketFiles(client *s3.Client, params *s3.ListObjectsV2Input) {
 	truncatedListing := true
+	numWalked := 0
 	for truncatedListing {
 		resp, err := client.ListObjectsV2(context.TODO(), params)
 		if err != nil {
@@ -189,6 +195,8 @@ func walkBucketFiles(client *s3.Client, params *s3.ListObjectsV2Input) {
 			key := aws.ToString(object.Key)
 			size := aws.ToInt64(object.Size)
 			handleFile(client, aws.ToString(params.Bucket), key, size)
+			numWalked += 1
+			log.Printf("Walked files: %d\n\n", numWalked)
 		}
 		params.ContinuationToken = resp.NextContinuationToken
 		truncatedListing = *resp.IsTruncated
@@ -199,8 +207,4 @@ func walkBucketFiles(client *s3.Client, params *s3.ListObjectsV2Input) {
 func exitErrorf(msg string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, msg+"\n", args...)
 	os.Exit(1)
-}
-
-func makeFilenameWindowsFriendly(name string) string {
-	return windowsFriendlyRegex.ReplaceAllString(name, "_")
 }
