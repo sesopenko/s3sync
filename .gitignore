@@ -12,6 +12,9 @@
 
 build/**/*
 
+# runtime folders
+mnt/**/*
+
 # Test binary, built with `go test -c`
 *.test
 
