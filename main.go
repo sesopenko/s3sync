@@ -28,13 +28,10 @@ func (fw FakeWriterAt) WriteAt(p []byte, offset int64) (n int, err error) {
 }
 
 func main() {
-	syncForever()
-}
-func syncForever() {
-	syncBucket()
-	time.AfterFunc(5*time.Minute, func() {
-		syncForever()
-	})
+	for true {
+		syncBucket()
+		time.Sleep(time.Minute)
+	}
 }
 
 func syncBucket() {
@@ -200,8 +197,8 @@ func walkBucketFiles(client *s3.Client, params *s3.ListObjectsV2Input) {
 		}
 		params.ContinuationToken = resp.NextContinuationToken
 		truncatedListing = *resp.IsTruncated
-
 	}
+	log.Printf("Finished walking bucket...")
 }
 
 func exitErrorf(msg string, args ...interface{}) {
