@@ -28,9 +28,15 @@ func (fw FakeWriterAt) WriteAt(p []byte, offset int64) (n int, err error) {
 }
 
 func main() {
+	startTime := time.Now()
+	restartTime := startTime.AddDate(0, 0, 7)
 	for true {
 		syncBucket()
+		log.Println("Sleeping 1 minute")
 		time.Sleep(time.Minute)
+		if time.Now().After(restartTime) {
+			exitErrorf("Restarting after running for 7 days to avoid memory leak errors.")
+		}
 	}
 }
 
