@@ -59,20 +59,14 @@ func syncBucket() {
 func handleFile(client *s3.Client, bucket string, key string, size int64) error {
 	savePath := os.Getenv("SAVE_PATH")
 	sanitizedKey := sanitizeWindowsPath(key)
+	sizeMb := float64(size) / 1024.0 / 1024.0
 	filePath := fmt.Sprintf("%s/%s", savePath, sanitizedKey)
 	dir := filepath.Dir(filePath)
-	parent := filepath.Base(toAscii(dir))
-	log.Printf("filePath=%s", filePath)
-	log.Printf("dir=%s", dir)
-	log.Printf("parent=%s", parent)
-	log.Printf("size=%.2f mb", float64(size)/1024.0/1024.0)
 	// if filePath doesn't exist
 	// download to location
 	if fi, fileErr := os.Stat(filePath); fileErr == nil {
 		// path to filePath exists
-		log.Printf("filePath exists: %s (local: %d bytes, remote: %d bytes)", filePath, fi.Size(), size)
 		if fi.Size() == size {
-			log.Println("File is correct size, skipping")
 			return nil
 		} else {
 			log.Println("File is incorrect size.  Deleting and downloading again.")
@@ -93,7 +87,7 @@ func handleFile(client *s3.Client, bucket string, key string, size int64) error 
 		log.Printf("Unable to create directory: %s", dir)
 		log.Print(dirErr)
 	}
-	log.Printf("downloading filePath: %s", filePath)
+	log.Printf("downloading filePath: %s (%.2f mb)", filePath, sizeMb)
 	result, downErr := client.GetObject(context.TODO(), &s3.GetObjectInput{
 		Bucket: aws.String(bucket),
 		Key:    aws.String(key),
@@ -119,6 +113,7 @@ func handleFile(client *s3.Client, bucket string, key string, size int64) error 
 		log.Printf("Couldn't write file body from %v. Error: %v\n", key, err)
 	}
 	file.Sync()
+
 	defer file.Close()
 	// if dir doesn't exist
 	// create it
@@ -161,7 +156,6 @@ func writeMeta(dir string, object *s3.GetObjectOutput) {
 			vt = strings.TrimSpace(vt)
 			metaString += fmt.Sprintln(fmt.Sprintf("%s: %s", kt, vt))
 		}
-		log.Printf("metaString: %s", metaString)
 		file, err := os.Create(metaPath)
 		if err != nil {
 			log.Printf("Could not create file: %v", err)
@@ -194,9 +188,15 @@ func walkBucketFiles(client *s3.Client, params *s3.ListObjectsV2Input) {
 		for _, object := range resp.Contents {
 			key := aws.ToString(object.Key)
 			size := aws.ToInt64(object.Size)
-			handleFile(client, aws.ToString(params.Bucket), key, size)
+
+			lastModified := aws.ToTime(object.LastModified)
+			expiry := time.Now().AddDate(-1, 0, 0)
+			if lastModified.Before(expiry) {
+				continue
+			} else {
+				handleFile(client, aws.ToString(params.Bucket), key, size)
+			}
 			numWalked += 1
-			log.Printf("Walked files: %d\n\n", numWalked)
 		}
 		params.ContinuationToken = resp.NextContinuationToken
 		truncatedListing = *resp.IsTruncated
