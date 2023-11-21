@@ -52,7 +52,7 @@ docker run -it sesopenko/s3sync \
 ## Licensed GNU GPL Version 3
 
 This software is licensed GNU GPL Version 3 which may be read in [LICENSE.md](LICENSE.md) or [LICENSE.txt](LICENSE.txt).
-A copy of this license should be included in this projectd. If one is not included it may be downloaded
+A copy of this license should be included in this project. If one is not included it may be downloaded
 from [https://www.gnu.org/licenses/gpl-3.0.txt](https://www.gnu.org/licenses/gpl-3.0.txt)
 
 ## Copyright
