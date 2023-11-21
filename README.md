@@ -44,8 +44,8 @@ docker run -it sesopenko/s3sync \
 -e AWS_ACCESS_KEY_ID=YOURKEY \
 -e AWS_REGION=us-west-2 \
 -e AWS_SECRET_ACCESS_KEY=YOURSECRETKEY \
--e BUCKET=your-bucket-name-do-not-use-arn
--e MAIN_FOLDER=thesub/folder/your/files/are/in/can/be/blank
+-e BUCKET=your-bucket-name-do-not-use-arn \
+-e MAIN_FOLDER=thesub/folder/your/files/are/in/can/be/blank \
 -e SAVE_PATH=/mnt/dest
 ```
 
