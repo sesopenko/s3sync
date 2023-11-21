@@ -30,11 +30,11 @@ See [DEVNOTES.md](DEVNOTES.md) for environment variables which need to be set in
 * MAIN_FOLDER=<folder to synchronize>
 * SAVE_PATH=/mnt/dest
 
-## Docker Mounts
+## Docker
 
-Mount the container path the $SAVE_PATH environment path to a local path to access the files.
+[https://hub.docker.com/r/sesopenko/s3sync](https://hub.docker.com/r/sesopenko/s3sync)
 
-## Docker Run Example
+### Docker Run Example
 
 This example will synchronize the files and store them in the host computer's `/mnt/dest` path.
 
