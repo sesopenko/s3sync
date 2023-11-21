@@ -15,7 +15,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-	"unicode/utf8"
 )
 
 type FakeWriterAt struct {
@@ -32,7 +31,6 @@ func main() {
 	restartTime := startTime.AddDate(0, 0, 7)
 	for true {
 		syncBucket()
-		log.Println("Sleeping 1 minute")
 		time.Sleep(time.Minute)
 		if time.Now().After(restartTime) {
 			exitErrorf("Restarting after running for 7 days to avoid memory leak errors.")
@@ -64,7 +62,7 @@ func handleFile(client *s3.Client, bucket string, key string, size int64) error 
 	sanitizedKey := sanitizeWindowsPath(key)
 	sizeMb := float64(size) / 1024.0 / 1024.0
 	filePath := fmt.Sprintf("%s/%s", savePath, sanitizedKey)
-	dir := filepath.Dir(filePath)
+
 	// if filePath doesn't exist
 	// download to location
 	if fi, fileErr := os.Stat(filePath); fileErr == nil {
@@ -86,6 +84,7 @@ func handleFile(client *s3.Client, bucket string, key string, size int64) error 
 		return fileErr
 	}
 	// path doesn't exist, let's create it
+	dir := filepath.Dir(filePath)
 	if dirErr := os.MkdirAll(dir, 0777); dirErr != nil {
 		log.Printf("Unable to create directory: %s", dir)
 		log.Print(dirErr)
@@ -126,6 +125,9 @@ func handleFile(client *s3.Client, bucket string, key string, size int64) error 
 
 func sanitizeWindowsPath(key string) string {
 	var sanitizedKey = key
+	// The following characters are invalid for Windows systems.
+	// Not filtering forward slashes because this typically runs in a posix environment
+	// which will interpret those as directory separators.
 	sanitizedKey = strings.ReplaceAll(sanitizedKey, "?", "_")
 	sanitizedKey = strings.ReplaceAll(sanitizedKey, "<", "_")
 	sanitizedKey = strings.ReplaceAll(sanitizedKey, ">", "_")
@@ -143,7 +145,7 @@ func writeMeta(dir string, object *s3.GetObjectOutput) {
 	metaPath := path.Join(dir, "details.txt")
 	if _, fileErr := os.Stat(metaPath); fileErr == nil {
 		// path to filePath exists
-		log.Printf("filePath exists: %s", metaPath)
+		log.Printf("meta filePath exists: %s", metaPath)
 		return
 	} else if errors.Is(fileErr, os.ErrNotExist) {
 		log.Printf("writing meta")
@@ -151,6 +153,8 @@ func writeMeta(dir string, object *s3.GetObjectOutput) {
 		dec := new(mime.WordDecoder)
 		for k, v := range object.Metadata {
 			kt := strings.TrimSpace(k)
+			// The values are encoded using http header encoding. Need to decode them so that
+			// unicode characters (like emojis) come through.
 			vt, err := dec.DecodeHeader(v)
 			if err != nil {
 				log.Printf("Unable to decode header (%v)", err)
@@ -161,7 +165,7 @@ func writeMeta(dir string, object *s3.GetObjectOutput) {
 		}
 		file, err := os.Create(metaPath)
 		if err != nil {
-			log.Printf("Could not create file: %v", err)
+			log.Printf("Could not create meta file: %v", err)
 			return
 		}
 		file.WriteString(metaString)
@@ -170,41 +174,30 @@ func writeMeta(dir string, object *s3.GetObjectOutput) {
 	}
 }
 
-func toAscii(s string) string {
-	t := make([]byte, utf8.RuneCountInString(s))
-	i := 0
-	for _, r := range s {
-		t[i] = byte(r)
-		i++
-	}
-	return string(t)
-}
-
 func walkBucketFiles(client *s3.Client, params *s3.ListObjectsV2Input) {
 	truncatedListing := true
-	numWalked := 0
 	for truncatedListing {
 		resp, err := client.ListObjectsV2(context.TODO(), params)
 		if err != nil {
 			exitErrorf("Unable to list items in bucket %q, %v", aws.ToString(params.Bucket), err)
 		}
-		for _, object := range resp.Contents {
-			key := aws.ToString(object.Key)
-			size := aws.ToInt64(object.Size)
+		for _, listObject := range resp.Contents {
+			key := aws.ToString(listObject.Key)
+			size := aws.ToInt64(listObject.Size)
 
-			lastModified := aws.ToTime(object.LastModified)
-			expiry := time.Now().AddDate(-1, 0, 0)
+			lastModified := aws.ToTime(listObject.LastModified)
+			const yearsExpiry = 1
+			expiry := time.Now().AddDate(-yearsExpiry, 0, 0)
 			if lastModified.Before(expiry) {
+				// Skip file, it's too old to bother syncing.
 				continue
 			} else {
 				handleFile(client, aws.ToString(params.Bucket), key, size)
 			}
-			numWalked += 1
 		}
 		params.ContinuationToken = resp.NextContinuationToken
 		truncatedListing = *resp.IsTruncated
 	}
-	log.Printf("Finished walking bucket...")
 }
 
 func exitErrorf(msg string, args ...interface{}) {
